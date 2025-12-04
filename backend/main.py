@@ -8,9 +8,11 @@ from typing import List, Dict, Any
 import uuid
 import json
 import asyncio
+import httpx
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .config import OLLAMA_API_URL
 
 app = FastAPI(title="LLM Council API")
 
@@ -22,6 +24,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Check Ollama connection on startup."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{OLLAMA_API_URL}/api/tags")
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                if models:
+                    print(f"✓ Ollama is running with {len(models)} model(s) available")
+                else:
+                    print("⚠ Ollama is running but no models are pulled. Please pull models first:")
+                    print("  ollama pull mistral")
+                    print("  ollama pull neural-chat")
+                    print("  (or other models configured in config.py)")
+            else:
+                print(f"⚠ Ollama responded with status {response.status_code}")
+    except Exception as e:
+        print(f"⚠ Warning: Could not connect to Ollama at {OLLAMA_API_URL}")
+        print(f"  Error: {e}")
+        print("  Make sure Ollama is running: ollama serve")
 
 
 class CreateConversationRequest(BaseModel):
@@ -53,7 +78,48 @@ class Conversation(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "service": "LLM Council API"}
+    return {"status": "ok", "service": "LLM Council API", "backend": "ollama"}
+
+
+@app.get("/api/health")
+async def health():
+    """Check Ollama health status."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{OLLAMA_API_URL}/api/tags")
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                return {
+                    "status": "ok",
+                    "ollama": "connected",
+                    "models_count": len(models)
+                }
+    except Exception as e:
+        return {
+            "status": "error",
+            "ollama": "disconnected",
+            "error": str(e)
+        }
+
+
+@app.get("/api/models")
+async def list_available_models():
+    """List available Ollama models."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{OLLAMA_API_URL}/api/tags")
+            if response.status_code == 200:
+                models_data = response.json().get('models', [])
+                models = [model['name'].split(':')[0] for model in models_data]
+                return {
+                    "models": list(set(models)),
+                    "count": len(set(models))
+                }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "models": []
+        }
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])

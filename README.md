@@ -2,7 +2,7 @@
 
 ![llmcouncil](header.jpg)
 
-The idea of this repo is that instead of asking a question to your favorite LLM provider (e.g. OpenAI GPT 5.1, Google Gemini 3.0 Pro, Anthropic Claude Sonnet 4.5, xAI Grok 4, eg.c), you can group them into your "LLM Council". This repo is a simple, local web app that essentially looks like ChatGPT except it uses OpenRouter to send your query to multiple LLMs, it then asks them to review and rank each other's work, and finally a Chairman LLM produces the final response.
+The idea of this repo is that instead of asking a question to your favorite LLM provider, you can group multiple LLMs into your "LLM Council". This repo is a simple, local web app that essentially looks like ChatGPT except it uses Ollama to run multiple LLMs locally, it then asks them to review and rank each other's work, and finally a Chairman LLM produces the final response.
 
 In a bit more detail, here is what happens when you submit a query:
 
@@ -16,7 +16,30 @@ This project was 99% vibe coded as a fun Saturday hack because I wanted to explo
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install Ollama
+
+First, install Ollama from [ollama.ai](https://ollama.ai). Then start the Ollama service:
+
+```bash
+ollama serve
+```
+
+By default, Ollama runs on `http://localhost:11434`
+
+### 2. Pull Models
+
+Pull the models you want to use in the council. Examples:
+
+```bash
+ollama pull mistral
+ollama pull neural-chat
+ollama pull dolphin-mixtral
+ollama pull llama2
+```
+
+You can find more models at [ollama.ai/library](https://ollama.ai/library). Pull at least 2-3 models for a good council experience.
+
+### 3. Install Dependencies
 
 The project uses [uv](https://docs.astral.sh/uv/) for project management.
 
@@ -32,29 +55,31 @@ npm install
 cd ..
 ```
 
-### 2. Configure API Key
+### 4. Configure Models (Optional)
 
-Create a `.env` file in the project root:
-
-```bash
-OPENROUTER_API_KEY=sk-or-v1-...
-```
-
-Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
-
-### 3. Configure Models (Optional)
-
-Edit `backend/config.py` to customize the council:
+Edit `backend/config.py` to customize the council with your pulled models:
 
 ```python
 COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
+    "mistral",
+    "neural-chat",
+    "dolphin-mixtral",
+    "llama2",
 ]
 
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+CHAIRMAN_MODEL = "mistral"
+```
+
+You can also set the Ollama API URL via environment variable:
+
+```bash
+export OLLAMA_API_URL=http://localhost:11434
+```
+
+Or in `.env`:
+
+```bash
+OLLAMA_API_URL=http://localhost:11434
 ```
 
 ## Running the Application
@@ -66,12 +91,17 @@ CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 
 **Option 2: Run manually**
 
-Terminal 1 (Backend):
+Terminal 1 (Ollama - if not already running):
+```bash
+ollama serve
+```
+
+Terminal 2 (Backend):
 ```bash
 uv run python -m backend.main
 ```
 
-Terminal 2 (Frontend):
+Terminal 3 (Frontend):
 ```bash
 cd frontend
 npm run dev
@@ -79,9 +109,42 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
+## API Endpoints
+
+- `GET /` - Health check
+- `GET /api/health` - Check Ollama connection status
+- `GET /api/models` - List available Ollama models
+- `GET /api/conversations` - List all conversations
+- `POST /api/conversations` - Create new conversation
+- `GET /api/conversations/{id}` - Get conversation
+- `POST /api/conversations/{id}/message` - Send message
+- `POST /api/conversations/{id}/message/stream` - Send message with streaming
+
+## Troubleshooting
+
+**Models not found:**
+```bash
+# Check available models
+ollama list
+
+# Pull a model
+ollama pull mistral
+```
+
+**Can't connect to Ollama:**
+- Ensure Ollama is running: `ollama serve`
+- Check OLLAMA_API_URL is correct (default: http://localhost:11434)
+- Check firewall settings if using a remote Ollama instance
+
+**Slow responses:**
+- Larger models (7B+ parameters) will be slower
+- Start with smaller models like "mistral" or "neural-chat"
+- Ensure sufficient RAM/VRAM available
+
 ## Tech Stack
 
-- **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API
+- **Backend:** FastAPI (Python 3.10+), async httpx, Ollama API
 - **Frontend:** React + Vite, react-markdown for rendering
 - **Storage:** JSON files in `data/conversations/`
 - **Package Management:** uv for Python, npm for JavaScript
+- **LLM Backend:** Ollama (local, no API keys needed)
